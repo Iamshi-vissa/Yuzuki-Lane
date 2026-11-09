@@ -1,10 +1,10 @@
-# Y≈´zuki Lane
+# YˇˇZUKI LANE
 
 An endless runner down a Japanese maple street at sunset, under a rising full moon. A straw-hatted wanderer in a wolf mask runs a lantern-lit lane; jump and duck past what the street throws at you.
 
 Everything is a single self-contained `index.html`: all art is drawn on a canvas in code, the music is synthesised with the Web Audio API, and the only external request is Google Fonts.
 
-## Play
+## PLAY
 
 Open `index.html` in a browser, or deploy the folder to any static host (a `vercel.json` is included).
 
@@ -15,7 +15,7 @@ Open `index.html` in a browser, or deploy the folder to any static host (a `verc
 | Pause / resume | P or Esc | ‚è∏ button |
 | Mute | M | ‚ô™ button |
 
-## Obstacles
+## OBSTACLES
 
 - **Stone lantern** and **sake barrels**: jump over them.
 - **Hanging festival lantern** (from 120 m): duck under it.
@@ -24,7 +24,7 @@ Open `index.html` in a browser, or deploy the folder to any static host (a `verc
 
 The run speeds up as you go. The sky moves from dusk to a moonlit night and back, and your best distance is saved in the browser.
 
-## Deploy
+## DEPLOY
 
 ```bash
 npx vercel deploy --prod
