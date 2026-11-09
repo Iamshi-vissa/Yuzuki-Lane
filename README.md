@@ -15,6 +15,10 @@ Open `index.html` in a browser, or deploy the folder to any static host (a `verc
 | Pause / resume | P or Esc | ⏸ button |
 | Mute | M | ♪ button |
 
+## ON PHONES
+
+The game plays in landscape. On Android, starting a run goes fullscreen and locks the screen sideways. On iPhone (where websites can't lock rotation), a prompt asks you to turn the phone, and a run pauses if you turn it upright again. Add it to your home screen to play it fullscreen like an app.
+
 ## OBSTACLES
 
 - **Stone lantern** and **sake barrels**: jump over them.
