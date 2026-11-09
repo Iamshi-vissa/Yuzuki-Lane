@@ -1,4 +1,4 @@
-# YÿÿZUKI LANE
+# YÅªZUKI LANE
 
 An endless runner down a Japanese maple street at sunset, under a rising full moon. A straw-hatted wanderer in a wolf mask runs a lantern-lit lane; jump and duck past what the street throws at you.
 
