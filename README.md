@@ -28,6 +28,10 @@ The game plays in landscape. On Android, starting a run goes fullscreen and lock
 
 The run speeds up as you go. The sky moves from dusk to a moonlit night and back, and your best distance is saved in the browser.
 
+## MUSIC AND SOUND
+
+The background score is an original piece written for this game in the Japanese in-scale (D, E♭, G, A, B♭): koto arpeggios, a breathy bamboo-flute melody and a low drone, with taiko drums that join as the run speeds up. Jumps make a short breath sound, and each obstacle has its own crash sound. Everything is synthesised live with the Web Audio API, so there are no audio files and no third-party licences. Press M or the ♪ button to mute.
+
 ## DEPLOY
 
 ```bash
