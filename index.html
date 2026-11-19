@@ -481,7 +481,7 @@ let actx = null, master = null, muted = store("yuzuki-muted") === "1";
 const SCALE = [146.83, 155.56, 196.0, 220.0, 233.08, 293.66, 311.13, 392.0, 440.0, 466.16, 587.33];
 function audioOn() {
   if (!actx) {
-    try { actx = new (window.AudioContext || window.webkitAudioContext)(); master = actx.createGain(); master.gain.value = muted ? 0 : 0.6; master.connect(actx.destination); startMusic(); } catch (e) { actx = null; }
+    try { actx = new (window.AudioContext || window.webkitAudioContext)(); master = actx.createGain(); master.gain.value = muted ? 0 : 0.6; master.connect(actx.destination); startMusic(); initSlide(); } catch (e) { actx = null; }
   }
   if (actx && actx.state === "suspended") actx.resume().catch(() => {});
 }
@@ -537,19 +537,59 @@ function crashSound(type) {
 }
 // ---- jump breaths: a short exhale shaped by two vocal formants ("hah" on the jump, a sharper "hup" on the double jump)
 function breath(kind) {
+  // a heavy, effortful exhale: low throat rumble, two vocal formants sliding down, and a rough flutter
   if (!actx) return;
-  const t = actx.currentTime, k = kind === 2 ? 1.18 : 1, dur = kind === 2 ? 0.16 : 0.24, vol = kind === 2 ? 0.5 : 0.42;
+  const t = actx.currentTime, dbl = kind === 2;
+  const dur = dbl ? 0.26 : 0.42, vol = dbl ? 0.75 : 0.7, k = dbl ? 1.1 : 1;
   const src = noise(), out = actx.createGain();
   out.gain.setValueAtTime(0.0001, t);
-  out.gain.exponentialRampToValueAtTime(vol, t + 0.022);
+  out.gain.exponentialRampToValueAtTime(vol, t + 0.03);
+  out.gain.setTargetAtTime(vol * 0.55, t + 0.06, 0.08);
   out.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  for (const [f0, f1, q, g] of [[1150, 760, 2.4, 1], [2700, 1900, 3.2, 0.55], [450, 380, 1.2, 0.35]]) {
+  const flutter = actx.createOscillator(), fg = actx.createGain();      // rough, uneven push of air
+  flutter.type = "sawtooth"; flutter.frequency.value = dbl ? 34 : 26; fg.gain.value = vol * 0.25;
+  flutter.connect(fg); fg.connect(out.gain); flutter.start(t); flutter.stop(t + dur);
+  for (const [f0, f1, q, g] of [[820, 520, 2.2, 1], [1750, 1150, 2.8, 0.6], [2900, 2300, 3.5, 0.25], [240, 180, 0.9, 0.7]]) {
     const f = actx.createBiquadFilter(), gg = actx.createGain();
     f.type = "bandpass"; f.Q.value = q;
     f.frequency.setValueAtTime(f0 * k, t); f.frequency.exponentialRampToValueAtTime(f1 * k, t + dur);
     gg.gain.value = g; src.connect(f); f.connect(gg); gg.connect(out);
   }
   out.connect(master); src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.02);
+}
+
+// ---- slide: a looping scrape of sandals and cloth on stone, faded in while ducking on the ground
+// and while the body skids after a crash
+let slideGain = null, slideFilter = null;
+function initSlide() {
+  if (slideGain || !actx) return;
+  const src = noise(); src.loop = true;
+  slideFilter = actx.createBiquadFilter(); slideFilter.type = "bandpass"; slideFilter.frequency.value = 1600; slideFilter.Q.value = 0.9;
+  const hp = actx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 350;
+  const grit = actx.createOscillator(), gg = actx.createGain();          // gritty stutter of stones under the feet
+  grit.type = "square"; grit.frequency.value = 23; gg.gain.value = 0.25;
+  slideGain = actx.createGain(); slideGain.gain.value = 0;
+  const mod = actx.createGain(); mod.gain.value = 1;
+  grit.connect(gg); gg.connect(mod.gain);
+  src.connect(hp); hp.connect(slideFilter); slideFilter.connect(mod); mod.connect(slideGain); slideGain.connect(master);
+  src.start(); grit.start();
+}
+function updateSlideSound() {
+  if (!slideGain) return;
+  const now = actx.currentTime;
+  const ducking = st.mode === "play" && !st.paused && pl.duck && pl.onGround;
+  const skidding = st.mode === "dying" && pl.sliding && st.landT < 0;
+  const on = ducking || skidding;
+  const level = skidding ? 0.34 : 0.2 * clamp(st.speed / 600, 0.6, 1.4);
+  slideGain.gain.setTargetAtTime(on ? level : 0, now, on ? 0.03 : 0.07);
+  slideFilter.frequency.setTargetAtTime(skidding ? 900 : 1300 + st.speed * 0.9, now, 0.1);
+  if (ducking && !pl.slideWas) {                                       // a quick whoosh as you drop into the slide
+    const t = now, n = noise(), f = actx.createBiquadFilter(), g = actx.createGain();
+    f.type = "bandpass"; f.Q.value = 1.2; f.frequency.setValueAtTime(2400, t); f.frequency.exponentialRampToValueAtTime(700, t + 0.22);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+    n.connect(f); f.connect(g); g.connect(master); n.start(t, Math.random() * 0.5); n.stop(t + 0.26);
+  }
+  pl.slideWas = ducking;
 }
 
 // ---- background score: an original piece in the in-scale (D Eb G A Bb), written for this game.
@@ -582,27 +622,57 @@ const FLUTE = [  // [note, beats]; 16 bars of melody, then 16 bars of rest for t
 ];
 const BPM = 76, EIGHTH = 60 / BPM / 2;
 let musicBus = null, music = null;
+// Second track, after a crash: "lament" — slow, sparse and low, an original piece in the same scale.
+// Rin bell strikes, a few deep koto notes, and a long-held flute line over a softer drone.
+const LAMENT_BPM = 54, BEAT = 60 / LAMENT_BPM;
+const LAMENT_KOTO = [["D3", null, "A3", null], ["Bb3", null, "G3", null], ["G3", null, "D3", null], ["A3", null, null, null]];
+const LAMENT_FLUTE = [  // [note, beats]
+  [null, 2], ["A4", 3], ["Bb4", 1], ["A4", 4], ["G4", 2], ["Eb4", 2], ["D4", 6], [null, 2],
+  ["G4", 3], ["A4", 1], ["Bb4", 4], ["D5", 3], ["Eb5", 1], ["D5", 4], ["Bb4", 2], ["A4", 2], ["G4", 8], [null, 4],
+  ["Eb4", 3], ["G4", 1], ["A4", 4], ["G4", 2], ["Eb4", 2], ["D4", 10], [null, 6]
+];
+let lamentBus = null, lament = null, track = "play";
+function rin(t, f, vol) {
+  // temple bowl: inharmonic partials with a slow shimmer and a long decay
+  for (const [m, a, d] of [[1, 1, 4.5], [2.71, 0.45, 3], [5.13, 0.2, 1.6], [8.2, 0.08, 0.8]]) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = "sine"; o.frequency.value = f * m; o.detune.value = (Math.random() - 0.5) * 6;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol * a, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g); g.connect(lamentBus); o.start(t); o.stop(t + d + 0.05);
+  }
+}
+function setTrack(name) {
+  if (!actx || !musicBus || track === name) { track = name; return; }
+  track = name;
+  const now = actx.currentTime;
+  musicBus.gain.setTargetAtTime(name === "play" ? 0.55 : 0, now, name === "play" ? 0.4 : 0.15);
+  lamentBus.gain.setTargetAtTime(name === "lament" ? 0.7 : 0, now, name === "lament" ? 0.6 : 0.2);
+  if (name === "lament") { lament.next = now + 0.5; lament.step = 0; lament.fi = 0; lament.fNext = lament.next; }
+  else { music.next = now + 0.25; music.step = 0; music.fi = 0; music.fNext = music.next; }
+}
 function startMusic() {
   if (music || !actx) return;
-  musicBus = actx.createGain(); musicBus.gain.value = 0.55; musicBus.connect(master);
+  musicBus = actx.createGain(); musicBus.gain.value = track === "play" ? 0.55 : 0; musicBus.connect(master);
+  lamentBus = actx.createGain(); lamentBus.gain.value = track === "lament" ? 0.7 : 0; lamentBus.connect(master);
+  lament = { next: actx.currentTime + 0.3, step: 0, fi: 0, fNext: actx.currentTime + 0.3 };
   // low drone on D and A, breathing slowly
   const dr = actx.createGain(); dr.gain.value = 0.05; const lp = actx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 500;
   for (const f of [N.D3 / 2, N.A3 / 2, N.D3]) { const o = actx.createOscillator(); o.type = "sawtooth"; o.frequency.value = f; o.detune.value = (Math.random() - 0.5) * 8; o.connect(lp); o.start(); }
   const lfo = actx.createOscillator(), lg = actx.createGain(); lfo.frequency.value = 0.07; lg.gain.value = 0.025; lfo.connect(lg); lg.connect(dr.gain); lfo.start();
-  lp.connect(dr); dr.connect(musicBus);
+  lp.connect(dr); dr.connect(master);
   music = { next: actx.currentTime + 0.15, step: 0, fi: 0, fNext: 0 };
   setInterval(scheduleMusic, 60);
 }
-function koto(t, f, vol) {
+function koto(t, f, vol, bus = musicBus) {
   const o = actx.createOscillator(), o2 = actx.createOscillator(), g = actx.createGain(), fl = actx.createBiquadFilter();
   o.type = "triangle"; o.frequency.value = f; o2.type = "sine"; o2.frequency.value = f * 3.01;
   fl.type = "lowpass"; fl.frequency.setValueAtTime(f * 9, t); fl.frequency.exponentialRampToValueAtTime(f * 1.3, t + 1.4);
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
   const g2 = actx.createGain(); g2.gain.value = 0.18;
-  o.connect(fl); o2.connect(g2); g2.connect(fl); fl.connect(g); g.connect(musicBus);
+  o.connect(fl); o2.connect(g2); g2.connect(fl); fl.connect(g); g.connect(bus);
   o.start(t); o2.start(t); o.stop(t + 1.7); o2.stop(t + 1.7);
 }
-function flute(t, f, dur) {
+function flute(t, f, dur, bus = musicBus) {
   // bamboo flute: soft triangle + sine, a small upward bend into the note, vibrato that blooms, breath noise on top
   const o = actx.createOscillator(), o2 = actx.createOscillator(), g = actx.createGain(), fl = actx.createBiquadFilter();
   o.type = "triangle"; o2.type = "sine";
@@ -614,11 +684,11 @@ function flute(t, f, dur) {
   const end = t + dur;
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.11, t + 0.09);
   g.gain.setValueAtTime(0.11, Math.max(t + 0.1, end - 0.25)); g.gain.exponentialRampToValueAtTime(0.0001, end + 0.15);
-  const mixo = actx.createGain(); mixo.gain.value = 0.6; o2.connect(mixo); mixo.connect(fl); o.connect(fl); fl.connect(g); g.connect(musicBus);
+  const mixo = actx.createGain(); mixo.gain.value = 0.6; o2.connect(mixo); mixo.connect(fl); o.connect(fl); fl.connect(g); g.connect(bus);
   const br = noise(), bf = actx.createBiquadFilter(), bg = actx.createGain();
   bf.type = "bandpass"; bf.frequency.value = f * 2; bf.Q.value = 1.5;
   bg.gain.setValueAtTime(0.0001, t); bg.gain.exponentialRampToValueAtTime(0.05, t + 0.05); bg.gain.exponentialRampToValueAtTime(0.012, t + 0.4); bg.gain.exponentialRampToValueAtTime(0.0001, end + 0.1);
-  br.connect(bf); bf.connect(bg); bg.connect(musicBus);
+  br.connect(bf); bf.connect(bg); bg.connect(bus);
   for (const x of [o, o2, vib]) { x.start(t); x.stop(end + 0.2); }
   br.start(t, Math.random() * 0.4); br.stop(end + 0.15);
 }
@@ -637,8 +707,26 @@ function rimClick(t) {
   g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
   n.connect(f); f.connect(g); g.connect(musicBus); n.start(t, Math.random() * 0.5); n.stop(t + 0.05);
 }
+function scheduleLament() {
+  const horizon = actx.currentTime + 0.4;
+  if (lament.next < actx.currentTime - 1) lament.next = actx.currentTime + 0.05;
+  while (lament.next < horizon) {
+    const t = lament.next, step = lament.step, bar = Math.floor(step / 4), pos = step % 4;
+    if (pos === 0 && bar % 2 === 0) rin(t, bar % 4 === 0 ? N.D5 : N.A4, 0.16);
+    const nk = LAMENT_KOTO[bar % 4][pos];
+    if (nk) koto(t + (Math.random() - 0.5) * 0.02, N[nk], 0.06, lamentBus);
+    if (t >= lament.fNext - 0.001) {
+      if (lament.fi >= LAMENT_FLUTE.length) lament.fi = 0;
+      const [note, beats] = LAMENT_FLUTE[lament.fi], dur = beats * BEAT;
+      if (note) flute(t, N[note] / 2, dur * 0.97, lamentBus);     // an octave lower, darker
+      lament.fNext = t + dur; lament.fi++;
+    }
+    lament.next += BEAT; lament.step++;
+  }
+}
 function scheduleMusic() {
   if (!actx || !music || muted || actx.state !== "running") return;
+  if (track === "lament") { scheduleLament(); return; }
   const horizon = actx.currentTime + 0.35;
   if (music.next < actx.currentTime - 1) music.next = actx.currentTime + 0.05;   // after a long stall, rejoin cleanly
   while (music.next < horizon) {
@@ -753,6 +841,7 @@ matchMedia("(orientation: portrait)").addEventListener("change", onOrientation);
 function startGame() {
   if (portrait()) return;          // wait until the phone is on its side
   goLandscape();
+  setTrack("play");
   resetRun();
   st.leaves = st.leaves.filter((l) => !l.rest);
   cloth = null; st.seals = []; pl.lastStep = 0;
@@ -770,6 +859,7 @@ function die(o) {
   pl.flash = 1; st.hitStop = 0.11; st.shake = 1; st.dust = [];
   st.hat = { x: pl.x + 6, y: pl.y - 64, vx: rand(-40, 60), vy: -620, rot: pl.hatR || 0, vr: rand(-11, -7), rest: false };
   crashSound(o.type);
+  setTrack("lament");
 }
 function showOver() {
   st.mode = "over";
@@ -819,7 +909,7 @@ function updateFx(dt) {
 const GRAV = 2500, JUMP_V = 860, JUMP2_V = 760;
 const hud = { score: "", phase: "" }, scoreNode = $("score").firstChild, phaseEl = $("phase");
 function update(dt) {
-  if (st.paused) return;
+  if (st.paused) { if (slideGain) slideGain.gain.setTargetAtTime(0, actx.currentTime, 0.03); return; }
   st.t += dt;
   // day cycle: dusk -> night over ~70s, holds, slowly returns
   const cyc = (st.t % 150) / 150;
@@ -927,6 +1017,7 @@ function update(dt) {
   updateFx(dt);
   poseCache = null;
   updateCloth(dt);
+  updateSlideSound();
   for (const s of st.sparks) { s.vy += 700 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.rot += s.vr * dt; s.life -= dt; if (s.y > GY) { s.y = GY; s.vy *= -0.3; s.vx *= 0.6; } }
   st.sparks = st.sparks.filter((s) => s.life > 0);
 
@@ -1922,7 +2013,6 @@ for (let i = 0; i < (reduceMotion ? 8 : 40); i++) spawnLeaf(true);
 // warm the scenery so the first frame is a full street
 for (const L of Object.values(layers)) updateLayer(L, 0);
 requestAnimationFrame(frame);
-
 })();
 </script>
 

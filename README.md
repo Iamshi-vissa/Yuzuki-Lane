@@ -30,7 +30,12 @@ The run speeds up as you go. The sky moves from dusk to a moonlit night and back
 
 ## MUSIC AND SOUND
 
-The background score is an original piece written for this game in the Japanese in-scale (D, E♭, G, A, B♭): koto arpeggios, a breathy bamboo-flute melody and a low drone, with taiko drums that join as the run speeds up. Jumps make a short breath sound, and each obstacle has its own crash sound. Everything is synthesised live with the Web Audio API, so there are no audio files and no third-party licences. Press M or the ♪ button to mute.
+Two original pieces, both in the Japanese in-scale (D, E♭, G, A, B♭), crossfade with the game:
+
+- **While running:** koto arpeggios, a breathy bamboo-flute melody and a low drone, with taiko drums that join as the run speeds up.
+- **After a crash:** a slow lament with temple-bell strikes, a few deep koto notes and a long, low flute line. A new run fades back to the running theme.
+
+Jumps make a heavy breath, ducking makes a scraping slide on the stones (the body skids with the same sound after a crash), and each obstacle has its own crash sound. Everything is synthesised live with the Web Audio API, so there are no audio files and no third-party licences. Press M or the ♪ button to mute.
 
 ## DEPLOY
 
