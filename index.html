@@ -481,7 +481,7 @@ let actx = null, master = null, muted = store("yuzuki-muted") === "1";
 const SCALE = [146.83, 155.56, 196.0, 220.0, 233.08, 293.66, 311.13, 392.0, 440.0, 466.16, 587.33];
 function audioOn() {
   if (!actx) {
-    try { actx = new (window.AudioContext || window.webkitAudioContext)(); master = actx.createGain(); master.gain.value = muted ? 0 : 0.6; master.connect(actx.destination); startMusic(); initSlide(); } catch (e) { actx = null; }
+    try { actx = new (window.AudioContext || window.webkitAudioContext)(); master = actx.createGain(); master.gain.value = muted ? 0 : 0.6; const comp = actx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 3; comp.attack.value = 0.01; comp.release.value = 0.25; master.connect(comp); comp.connect(actx.destination); startMusic(); initSlide(); } catch (e) { actx = null; }
   }
   if (actx && actx.state === "suspended") actx.resume().catch(() => {});
 }
@@ -592,48 +592,180 @@ function updateSlideSound() {
   pl.slideWas = ducking;
 }
 
-// ---- background score: an original piece in the in-scale (D Eb G A Bb), written for this game.
-// Koto arpeggios, a breathy bamboo-flute melody, a low drone, and taiko that join as the run speeds up.
-// Scheduled ahead on the audio clock, so it keeps time even when frames drop.
-const N = { D3: 146.83, G3: 196.0, A3: 220.0, Bb3: 233.08, D4: 293.66, Eb4: 311.13, G4: 392.0, A4: 440.0, Bb4: 466.16, D5: 587.33, Eb5: 622.25, G5: 783.99 };
-const KOTO = [  // one bar of eighths each; null rests
-  ["D3", "A3", "D4", "Eb4", "A4", null, "Eb4", "D4"],
-  ["G3", "D4", "G4", "A4", "Bb4", null, "A4", "G4"],
-  ["Bb3", "D4", "Eb4", "G4", "A4", "G4", "Eb4", null],
-  ["A3", "D4", "Eb4", "A4", "D5", null, "A4", "Eb4"]
+// ---- music: two original pieces written for this game, mixed through a reverb and a gentle compressor.
+// "Lantern Run" plays while running: a bright yo-scale (D E G A B) flute hook over pads, bass, koto,
+// shamisen and a festival drum groove that builds with speed.
+// "Ash and Moonlight" plays after a crash: slow in-scale (D Eb G A Bb) pads, temple bells, koto and a low flute.
+// Every note is scheduled ahead on the audio clock, so tempo holds even when frames drop.
+const N = {
+  G2: 98.0, A2: 110.0, Bb2: 116.54, B2: 123.47, D3: 146.83, E3: 164.81, G3: 196.0, A3: 220.0, Bb3: 233.08, B3: 246.94,
+  D4: 293.66, Eb4: 311.13, E4: 329.63, G4: 392.0, A4: 440.0, Bb4: 466.16, B4: 493.88, D5: 587.33, Eb5: 622.25, E5: 659.25, G5: 783.99, A5: 880.0
+};
+// running theme: 4-bar chord cycle (bass root, pad voicing from the scale)
+const RUN_CHORDS = [
+  { bass: "B2", pad: ["B3", "D4", "E4"], arp: ["B3", "D4", "E4", "B4"] },
+  { bass: "G2", pad: ["G3", "B3", "D4"], arp: ["G3", "B3", "D4", "G4"] },
+  { bass: "D3", pad: ["D4", "E4", "A4"], arp: ["D4", "E4", "A4", "D5"] },
+  { bass: "A2", pad: ["A3", "D4", "E4"], arp: ["A3", "D4", "E4", "A4"] }
 ];
-const FLUTE = [  // [note, beats]; 16 bars of melody, then 16 bars of rest for the koto alone
-  ["A4", 3], ["Bb4", 1], ["A4", 2], ["G4", 2],
-  ["D5", 4], ["Eb5", 2], ["D5", 2],
-  ["Bb4", 3], ["A4", 1], ["G4", 4],
+const RUN_HOOK = [  // 8 bars of [note, eighths]; each bar adds to 8
+  ["B4", 2], ["A4", 1], ["B4", 1], ["D5", 2], ["B4", 1], ["A4", 1],
+  ["G4", 2], ["A4", 1], ["B4", 1], ["A4", 3], [null, 1],
+  ["D5", 2], ["E5", 1], ["D5", 1], ["B4", 2], ["A4", 1], ["G4", 1],
   ["A4", 6], [null, 2],
-  ["G4", 2], ["A4", 2], ["Bb4", 2], ["D5", 2],
-  ["Eb5", 3], ["D5", 1], ["Bb4", 4],
-  ["A4", 2], ["G4", 2], ["Eb4", 4],
-  ["D4", 6], [null, 2],
-  ["D5", 2], ["Eb5", 2], ["G5", 4],
-  ["Eb5", 2], ["D5", 2], ["Bb4", 4],
-  ["A4", 3], ["G4", 1], ["A4", 4],
-  [null, 8],
-  ["G4", 3], ["A4", 1], ["Bb4", 4],
-  ["A4", 2], ["G4", 2], ["Eb4", 2], ["D4", 2],
-  ["Eb4", 4], ["D4", 4],
-  ["D4", 6], [null, 2]
+  ["B4", 2], ["D5", 1], ["E5", 1], ["G5", 2], ["E5", 1], ["D5", 1],
+  ["E5", 2], ["D5", 1], ["B4", 1], ["D5", 3], [null, 1],
+  ["A4", 1], ["B4", 1], ["D5", 1], ["E5", 1], ["D5", 2], ["B4", 1], ["A4", 1],
+  ["A4", 4], [null, 4]
 ];
-const BPM = 76, EIGHTH = 60 / BPM / 2;
-let musicBus = null, music = null;
-// Second track, after a crash: "lament" — slow, sparse and low, an original piece in the same scale.
-// Rin bell strikes, a few deep koto notes, and a long-held flute line over a softer drone.
-const LAMENT_BPM = 54, BEAT = 60 / LAMENT_BPM;
-const LAMENT_KOTO = [["D3", null, "A3", null], ["Bb3", null, "G3", null], ["G3", null, "D3", null], ["A3", null, null, null]];
-const LAMENT_FLUTE = [  // [note, beats]
+const RUN_BPM = 96, E8 = 60 / RUN_BPM / 2;
+// crash theme
+const LAMENT_BPM = 58, BEAT = 60 / LAMENT_BPM;
+const LAMENT_CHORDS = [
+  { bass: "D3", pad: ["A3", "D4", "Eb4"] }, { bass: "Bb2", pad: ["Bb3", "D4", "A4"] },
+  { bass: "G2", pad: ["G3", "Bb3", "D4"] }, { bass: "A2", pad: ["A3", "Eb4", "G4"] }
+];
+const LAMENT_FLUTE = [  // [note, beats]; 16 bars
   [null, 2], ["A4", 3], ["Bb4", 1], ["A4", 4], ["G4", 2], ["Eb4", 2], ["D4", 6], [null, 2],
   ["G4", 3], ["A4", 1], ["Bb4", 4], ["D5", 3], ["Eb5", 1], ["D5", 4], ["Bb4", 2], ["A4", 2], ["G4", 8], [null, 4],
   ["Eb4", 3], ["G4", 1], ["A4", 4], ["G4", 2], ["Eb4", 2], ["D4", 10], [null, 6]
 ];
-let lamentBus = null, lament = null, track = "play";
+let musicBus = null, lamentBus = null, music = null, lament = null, track = "play", verb = null;
+
+function makeReverb(seconds) {
+  const len = Math.floor(actx.sampleRate * seconds), buf = actx.createBuffer(2, len, actx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6);
+  }
+  const c = actx.createConvolver(); c.buffer = buf; return c;
+}
+function busWithVerb(level, wet) {
+  const bus = actx.createGain(); bus.gain.value = level;
+  const dry = actx.createGain(); dry.gain.value = 1; const send = actx.createGain(); send.gain.value = wet;
+  bus.connect(dry); dry.connect(master); bus.connect(send); send.connect(verb);
+  return bus;
+}
+function startMusic() {
+  if (music || !actx) return;
+  verb = makeReverb(2.6); const vg = actx.createGain(); vg.gain.value = 0.9; verb.connect(vg); vg.connect(master);
+  musicBus = busWithVerb(track === "play" ? 0.6 : 0, 0.32);
+  lamentBus = busWithVerb(track === "lament" ? 0.75 : 0, 0.6);
+  music = { next: actx.currentTime + 0.15, step: 0, mi: 0, mNext: actx.currentTime + 0.15 };
+  lament = { next: actx.currentTime + 0.3, step: 0, fi: 0, fNext: actx.currentTime + 0.3 };
+  setInterval(scheduleMusic, 50);
+}
+function setTrack(name) {
+  if (!actx || !musicBus || track === name) { track = name; return; }
+  track = name;
+  const now = actx.currentTime;
+  musicBus.gain.setTargetAtTime(name === "play" ? 0.6 : 0, now, name === "play" ? 0.35 : 0.12);
+  lamentBus.gain.setTargetAtTime(name === "lament" ? 0.75 : 0, now, name === "lament" ? 0.6 : 0.2);
+  if (name === "lament") { lament.next = now + 0.45; lament.step = 0; lament.fi = 0; lament.fNext = lament.next; }
+  else { music.next = now + 0.2; music.step = 0; music.mi = 0; music.mNext = music.next; }
+}
+
+// ---- instruments
+function env(g, t, a, peak, d, sustain, end, r) {
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak, t + a);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak * sustain), t + a + d);
+  g.gain.setValueAtTime(Math.max(0.0001, peak * sustain), end);
+  g.gain.exponentialRampToValueAtTime(0.0001, end + r);
+}
+function pad(t, notes, dur, vol, bus) {
+  const g = actx.createGain(), lp = actx.createBiquadFilter();
+  lp.type = "lowpass"; lp.frequency.setValueAtTime(700, t); lp.frequency.linearRampToValueAtTime(1500, t + dur * 0.5); lp.frequency.linearRampToValueAtTime(800, t + dur); lp.Q.value = 0.6;
+  env(g, t, 0.45, vol, 0.3, 0.85, t + dur, 0.9);
+  lp.connect(g); g.connect(bus);
+  for (const n of notes) for (const det of [-7, 6]) {
+    const o = actx.createOscillator(); o.type = "sawtooth"; o.frequency.value = N[n]; o.detune.value = det;
+    o.connect(lp); o.start(t); o.stop(t + dur + 1);
+  }
+}
+function bassNote(t, f, dur, vol, bus) {
+  const o = actx.createOscillator(), o2 = actx.createOscillator(), g = actx.createGain(), lp = actx.createBiquadFilter();
+  o.type = "triangle"; o.frequency.value = f; o2.type = "sine"; o2.frequency.value = f / 2;
+  lp.type = "lowpass"; lp.frequency.value = 520;
+  env(g, t, 0.01, vol, 0.18, 0.6, t + dur, 0.08);
+  o.connect(lp); o2.connect(lp); lp.connect(g); g.connect(bus);
+  o.start(t); o2.start(t); o.stop(t + dur + 0.15); o2.stop(t + dur + 0.15);
+}
+function koto(t, f, vol, bus = musicBus) {
+  const o = actx.createOscillator(), o2 = actx.createOscillator(), g = actx.createGain(), fl = actx.createBiquadFilter();
+  o.type = "triangle"; o.frequency.value = f; o2.type = "sine"; o2.frequency.value = f * 3.01;
+  fl.type = "lowpass"; fl.frequency.setValueAtTime(f * 9, t); fl.frequency.exponentialRampToValueAtTime(f * 1.3, t + 1.4);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+  const g2 = actx.createGain(); g2.gain.value = 0.18;
+  o.connect(fl); o2.connect(g2); g2.connect(fl); fl.connect(g); g.connect(bus);
+  o.start(t); o2.start(t); o.stop(t + 1.7); o2.stop(t + 1.7);
+}
+function shamisen(t, f, vol, bus) {
+  // twangy, buzzy pluck with the click of the plectrum
+  const o = actx.createOscillator(), g = actx.createGain(), bp = actx.createBiquadFilter();
+  o.type = "sawtooth"; o.frequency.setValueAtTime(f * 1.01, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.04);
+  bp.type = "bandpass"; bp.frequency.setValueAtTime(f * 4, t); bp.frequency.exponentialRampToValueAtTime(f * 2, t + 0.25); bp.Q.value = 1.6;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+  o.connect(bp); bp.connect(g); g.connect(bus); o.start(t); o.stop(t + 0.35);
+  const n = noise(), nf = actx.createBiquadFilter(), ng = actx.createGain();
+  nf.type = "highpass"; nf.frequency.value = 3000; ng.gain.setValueAtTime(vol * 0.6, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.02);
+  n.connect(nf); nf.connect(ng); ng.connect(bus); n.start(t, Math.random() * 0.5); n.stop(t + 0.03);
+}
+function flute(t, f, dur, bus = musicBus, vol = 0.12) {
+  // bamboo flute: a small bend up into the note, vibrato that blooms, and breath on top
+  const o = actx.createOscillator(), o2 = actx.createOscillator(), g = actx.createGain(), fl = actx.createBiquadFilter();
+  o.type = "triangle"; o2.type = "sine";
+  for (const x of [o, o2]) { x.frequency.setValueAtTime(f * 0.97, t); x.frequency.exponentialRampToValueAtTime(f, t + 0.08); }
+  const vib = actx.createOscillator(), vg = actx.createGain(); vib.frequency.value = 5.4;
+  vg.gain.setValueAtTime(0, t); vg.gain.linearRampToValueAtTime(f * 0.011, t + Math.min(dur, 0.7));
+  vib.connect(vg); vg.connect(o.frequency); vg.connect(o2.frequency);
+  fl.type = "lowpass"; fl.frequency.value = 2600;
+  const end = t + dur;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.06);
+  g.gain.setValueAtTime(vol, Math.max(t + 0.07, end - 0.12)); g.gain.exponentialRampToValueAtTime(0.0001, end + 0.12);
+  const mixo = actx.createGain(); mixo.gain.value = 0.7; o2.connect(mixo); mixo.connect(fl); o.connect(fl); fl.connect(g); g.connect(bus);
+  const br = noise(), bf = actx.createBiquadFilter(), bg = actx.createGain();
+  bf.type = "bandpass"; bf.frequency.value = f * 2; bf.Q.value = 1.4;
+  bg.gain.setValueAtTime(0.0001, t); bg.gain.exponentialRampToValueAtTime(vol * 0.4, t + 0.04); bg.gain.exponentialRampToValueAtTime(vol * 0.08, t + 0.3); bg.gain.exponentialRampToValueAtTime(0.0001, end + 0.1);
+  br.connect(bf); bf.connect(bg); bg.connect(bus);
+  for (const x of [o, o2, vib]) { x.start(t); x.stop(end + 0.2); }
+  br.start(t, Math.random() * 0.4); br.stop(end + 0.15);
+}
+function kick(t, vol, bus) {
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = "sine"; o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.16);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+  o.connect(g); g.connect(bus); o.start(t); o.stop(t + 0.35);
+}
+function clap(t, vol, bus) {
+  // a wooden hand-drum slap: short noise bursts with a hollow body
+  for (const dt of [0, 0.012, 0.024]) {
+    const n = noise(), f = actx.createBiquadFilter(), g = actx.createGain();
+    f.type = "bandpass"; f.frequency.value = 1500; f.Q.value = 1.1;
+    g.gain.setValueAtTime(vol, t + dt); g.gain.exponentialRampToValueAtTime(0.0001, t + dt + (dt === 0.024 ? 0.16 : 0.03));
+    n.connect(f); f.connect(g); g.connect(bus); n.start(t + dt, Math.random() * 0.5); n.stop(t + dt + 0.18);
+  }
+  const o = actx.createOscillator(), og = actx.createGain();
+  o.type = "sine"; o.frequency.setValueAtTime(240, t); o.frequency.exponentialRampToValueAtTime(160, t + 0.08);
+  og.gain.setValueAtTime(vol * 0.7, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+  o.connect(og); og.connect(bus); o.start(t); o.stop(t + 0.12);
+}
+function hat(t, vol, open, bus) {
+  const n = noise(), f = actx.createBiquadFilter(), g = actx.createGain();
+  f.type = "highpass"; f.frequency.value = 7000;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + (open ? 0.14 : 0.035));
+  n.connect(f); f.connect(g); g.connect(bus); n.start(t, Math.random() * 0.5); n.stop(t + 0.16);
+}
+function taikoHit(t, big, bus = musicBus) {
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = "sine"; o.frequency.setValueAtTime(big ? 105 : 140, t); o.frequency.exponentialRampToValueAtTime(big ? 50 : 75, t + 0.35);
+  g.gain.setValueAtTime(big ? 0.4 : 0.22, t); g.gain.exponentialRampToValueAtTime(0.0001, t + (big ? 0.6 : 0.3));
+  o.connect(g); g.connect(bus); o.start(t); o.stop(t + 0.65);
+  const n = noise(), f = actx.createBiquadFilter(), ng = actx.createGain();
+  f.type = "lowpass"; f.frequency.value = 700; ng.gain.setValueAtTime(big ? 0.16 : 0.08, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+  n.connect(f); f.connect(ng); ng.connect(bus); n.start(t, Math.random() * 0.5); n.stop(t + 0.14);
+}
 function rin(t, f, vol) {
-  // temple bowl: inharmonic partials with a slow shimmer and a long decay
   for (const [m, a, d] of [[1, 1, 4.5], [2.71, 0.45, 3], [5.13, 0.2, 1.6], [8.2, 0.08, 0.8]]) {
     const o = actx.createOscillator(), g = actx.createGain();
     o.type = "sine"; o.frequency.value = f * m; o.detune.value = (Math.random() - 0.5) * 6;
@@ -641,84 +773,62 @@ function rin(t, f, vol) {
     o.connect(g); g.connect(lamentBus); o.start(t); o.stop(t + d + 0.05);
   }
 }
-function setTrack(name) {
-  if (!actx || !musicBus || track === name) { track = name; return; }
-  track = name;
-  const now = actx.currentTime;
-  musicBus.gain.setTargetAtTime(name === "play" ? 0.55 : 0, now, name === "play" ? 0.4 : 0.15);
-  lamentBus.gain.setTargetAtTime(name === "lament" ? 0.7 : 0, now, name === "lament" ? 0.6 : 0.2);
-  if (name === "lament") { lament.next = now + 0.5; lament.step = 0; lament.fi = 0; lament.fNext = lament.next; }
-  else { music.next = now + 0.25; music.step = 0; music.fi = 0; music.fNext = music.next; }
-}
-function startMusic() {
-  if (music || !actx) return;
-  musicBus = actx.createGain(); musicBus.gain.value = track === "play" ? 0.55 : 0; musicBus.connect(master);
-  lamentBus = actx.createGain(); lamentBus.gain.value = track === "lament" ? 0.7 : 0; lamentBus.connect(master);
-  lament = { next: actx.currentTime + 0.3, step: 0, fi: 0, fNext: actx.currentTime + 0.3 };
-  // low drone on D and A, breathing slowly
-  const dr = actx.createGain(); dr.gain.value = 0.05; const lp = actx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 500;
-  for (const f of [N.D3 / 2, N.A3 / 2, N.D3]) { const o = actx.createOscillator(); o.type = "sawtooth"; o.frequency.value = f; o.detune.value = (Math.random() - 0.5) * 8; o.connect(lp); o.start(); }
-  const lfo = actx.createOscillator(), lg = actx.createGain(); lfo.frequency.value = 0.07; lg.gain.value = 0.025; lfo.connect(lg); lg.connect(dr.gain); lfo.start();
-  lp.connect(dr); dr.connect(master);
-  music = { next: actx.currentTime + 0.15, step: 0, fi: 0, fNext: 0 };
-  setInterval(scheduleMusic, 60);
-}
-function koto(t, f, vol, bus = musicBus) {
-  const o = actx.createOscillator(), o2 = actx.createOscillator(), g = actx.createGain(), fl = actx.createBiquadFilter();
-  o.type = "triangle"; o.frequency.value = f; o2.type = "sine"; o2.frequency.value = f * 3.01;
-  fl.type = "lowpass"; fl.frequency.setValueAtTime(f * 9, t); fl.frequency.exponentialRampToValueAtTime(f * 1.3, t + 1.4);
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
-  const g2 = actx.createGain(); g2.gain.value = 0.18;
-  o.connect(fl); o2.connect(g2); g2.connect(fl); fl.connect(g); g.connect(bus);
-  o.start(t); o2.start(t); o.stop(t + 1.7); o2.stop(t + 1.7);
-}
-function flute(t, f, dur, bus = musicBus) {
-  // bamboo flute: soft triangle + sine, a small upward bend into the note, vibrato that blooms, breath noise on top
-  const o = actx.createOscillator(), o2 = actx.createOscillator(), g = actx.createGain(), fl = actx.createBiquadFilter();
-  o.type = "triangle"; o2.type = "sine";
-  for (const x of [o, o2]) { x.frequency.setValueAtTime(f * 0.965, t); x.frequency.exponentialRampToValueAtTime(f, t + 0.12); }
-  const vib = actx.createOscillator(), vg = actx.createGain(); vib.frequency.value = 5.2;
-  vg.gain.setValueAtTime(0, t); vg.gain.linearRampToValueAtTime(f * 0.012, t + Math.min(dur, 0.9));
-  vib.connect(vg); vg.connect(o.frequency); vg.connect(o2.frequency);
-  fl.type = "lowpass"; fl.frequency.value = 2400;
-  const end = t + dur;
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.11, t + 0.09);
-  g.gain.setValueAtTime(0.11, Math.max(t + 0.1, end - 0.25)); g.gain.exponentialRampToValueAtTime(0.0001, end + 0.15);
-  const mixo = actx.createGain(); mixo.gain.value = 0.6; o2.connect(mixo); mixo.connect(fl); o.connect(fl); fl.connect(g); g.connect(bus);
-  const br = noise(), bf = actx.createBiquadFilter(), bg = actx.createGain();
-  bf.type = "bandpass"; bf.frequency.value = f * 2; bf.Q.value = 1.5;
-  bg.gain.setValueAtTime(0.0001, t); bg.gain.exponentialRampToValueAtTime(0.05, t + 0.05); bg.gain.exponentialRampToValueAtTime(0.012, t + 0.4); bg.gain.exponentialRampToValueAtTime(0.0001, end + 0.1);
-  br.connect(bf); bf.connect(bg); bg.connect(bus);
-  for (const x of [o, o2, vib]) { x.start(t); x.stop(end + 0.2); }
-  br.start(t, Math.random() * 0.4); br.stop(end + 0.15);
-}
-function taikoHit(t, big) {
-  const o = actx.createOscillator(), g = actx.createGain();
-  o.type = "sine"; o.frequency.setValueAtTime(big ? 105 : 140, t); o.frequency.exponentialRampToValueAtTime(big ? 50 : 75, t + 0.35);
-  g.gain.setValueAtTime(big ? 0.42 : 0.2, t); g.gain.exponentialRampToValueAtTime(0.0001, t + (big ? 0.6 : 0.3));
-  o.connect(g); g.connect(musicBus); o.start(t); o.stop(t + 0.65);
-  const n = noise(), f = actx.createBiquadFilter(), ng = actx.createGain();
-  f.type = "lowpass"; f.frequency.value = 700; ng.gain.setValueAtTime(big ? 0.18 : 0.08, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-  n.connect(f); f.connect(ng); ng.connect(musicBus); n.start(t, Math.random() * 0.5); n.stop(t + 0.14);
-}
-function rimClick(t) {
-  const n = noise(), f = actx.createBiquadFilter(), g = actx.createGain();
-  f.type = "bandpass"; f.frequency.value = 3200; f.Q.value = 4;
-  g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
-  n.connect(f); f.connect(g); g.connect(musicBus); n.start(t, Math.random() * 0.5); n.stop(t + 0.05);
+
+// ---- schedulers
+function scheduleRun() {
+  const horizon = actx.currentTime + 0.3, B = musicBus;
+  if (music.next < actx.currentTime - 1) { music.next = actx.currentTime + 0.05; music.mNext = music.next; }
+  while (music.next < horizon) {
+    const t = music.next, step = music.step, bar = Math.floor(step / 8), pos = step % 8;
+    const ch = RUN_CHORDS[bar % 4], section = Math.floor(bar / 8) % 2;    // 8 bars hook on flute, 8 bars koto/shamisen answer
+    const playing = st.mode === "play" || st.mode === "dying";
+    const drive = playing ? clamp((st.speed - 380) / 420, 0, 1) : 0;
+    const sw = pos % 2 ? E8 * 0.12 : 0;                                  // a little swing on the off-beats
+    // harmony
+    if (pos === 0) pad(t, ch.pad, E8 * 8, 0.022, B);
+    if (pos === 0 || pos === 3 || pos === 6) bassNote(t + (pos ? sw : 0), N[ch.bass], E8 * (pos === 6 ? 2 : 2.6), playing ? 0.2 : 0.12, B);
+    // koto ripples: a rising figure on the chord, quieter under the flute
+    if (pos % 2 === 0 || section === 1) {
+      const n = ch.arp[(pos + bar) % 4];
+      koto(t + sw + (Math.random() - 0.5) * 0.01, N[n] * (section ? 2 : 1), section ? 0.05 : 0.035);
+    }
+    // melody: flute in section A, shamisen + koto in section B (answer an octave down)
+    if (bar % 16 === 0 && pos === 0) { music.mi = 0; music.mNext = t; }
+    if (bar % 8 === 0 && pos === 0 && section === 1) { music.mi = 0; music.mNext = t; }
+    if (t >= music.mNext - 0.001 && music.mi < RUN_HOOK.length) {
+      const [note, len] = RUN_HOOK[music.mi], dur = len * E8;
+      if (note) {
+        if (section === 0) flute(t + sw, N[note], dur * 0.95, B, 0.13);
+        else if (playing && drive > 0.2) shamisen(t + sw, N[note] / 2, 0.11, B);
+        else koto(t + sw, N[note], 0.06);
+      }
+      music.mNext = t + dur; music.mi++;
+    }
+    // festival groove (only while running), building with speed
+    if (playing) {
+      if (pos === 0 || pos === 4 || (drive > 0.5 && pos === 5)) kick(t, 0.55, B);
+      if (drive > 0.1 && (pos === 2 || pos === 6)) clap(t, 0.32, B);
+      hat(t + sw, pos % 2 ? 0.05 : 0.08, pos === 7 && drive > 0.4, B);
+      if (drive > 0.35 && (pos === 1 || pos === 5)) shamisen(t + sw, N[ch.bass] * 2, 0.06, B);
+      if (drive > 0.6 && bar % 4 === 3 && pos >= 6) taikoHit(t, pos === 6, B);
+      if (drive > 0.8 && bar % 2 === 1 && pos === 4) taikoHit(t, true, B);
+    }
+    music.next += E8; music.step++;
+  }
 }
 function scheduleLament() {
-  const horizon = actx.currentTime + 0.4;
-  if (lament.next < actx.currentTime - 1) lament.next = actx.currentTime + 0.05;
+  const horizon = actx.currentTime + 0.4, B = lamentBus;
+  if (lament.next < actx.currentTime - 1) { lament.next = actx.currentTime + 0.05; lament.fNext = lament.next; }
   while (lament.next < horizon) {
     const t = lament.next, step = lament.step, bar = Math.floor(step / 4), pos = step % 4;
-    if (pos === 0 && bar % 2 === 0) rin(t, bar % 4 === 0 ? N.D5 : N.A4, 0.16);
-    const nk = LAMENT_KOTO[bar % 4][pos];
-    if (nk) koto(t + (Math.random() - 0.5) * 0.02, N[nk], 0.06, lamentBus);
+    const ch = LAMENT_CHORDS[bar % 4];
+    if (pos === 0) { pad(t, ch.pad, BEAT * 4, 0.024, B); bassNote(t, N[ch.bass], BEAT * 3.6, 0.13, B); }
+    if (pos === 0 && bar % 2 === 0) rin(t, bar % 4 === 0 ? N.D5 : N.A4, 0.13);
+    if (pos === 1 || pos === 3) koto(t + (Math.random() - 0.5) * 0.02, N[ch.pad[(bar + pos) % 3]] * 2, 0.04, B);
     if (t >= lament.fNext - 0.001) {
       if (lament.fi >= LAMENT_FLUTE.length) lament.fi = 0;
       const [note, beats] = LAMENT_FLUTE[lament.fi], dur = beats * BEAT;
-      if (note) flute(t, N[note] / 2, dur * 0.97, lamentBus);     // an octave lower, darker
+      if (note) flute(t, N[note] / 2, dur * 0.97, B, 0.14);
       lament.fNext = t + dur; lament.fi++;
     }
     lament.next += BEAT; lament.step++;
@@ -726,29 +836,7 @@ function scheduleLament() {
 }
 function scheduleMusic() {
   if (!actx || !music || muted || actx.state !== "running") return;
-  if (track === "lament") { scheduleLament(); return; }
-  const horizon = actx.currentTime + 0.35;
-  if (music.next < actx.currentTime - 1) music.next = actx.currentTime + 0.05;   // after a long stall, rejoin cleanly
-  while (music.next < horizon) {
-    const t = music.next, step = music.step, bar = Math.floor(step / 8), pos = step % 8;
-    const cycle = Math.floor(bar / 16) % 2;                      // 16 bars with flute, 16 bars of koto alone
-    // koto: humanised timing, softer off-beats
-    const nk = KOTO[bar % 4][pos];
-    if (nk) koto(t + (Math.random() - 0.5) * 0.012, N[nk], pos % 2 ? 0.05 : 0.075);
-    // flute melody on its own note clock
-    if (bar % 32 === 0 && pos === 0) { music.fi = 0; music.fNext = t; }
-    if (cycle === 0 && music.fi < FLUTE.length && t >= music.fNext - 0.001) {
-      const [note, beats] = FLUTE[music.fi], dur = beats * EIGHTH * 2;
-      if (note) flute(t, N[note], dur * 0.96);
-      music.fNext = t + dur; music.fi++;
-    }
-    // taiko join in as the lane speeds up, and stay quiet on the title and after a crash
-    const drive = st.mode === "play" ? clamp((st.speed - 430) / 300, 0, 1) : 0;
-    if (drive > 0 && pos === 0) taikoHit(t, true);
-    if (drive > 0.35 && pos === 4) taikoHit(t, false);
-    if (drive > 0.7 && (pos === 3 || pos === 7)) rimClick(t);
-    music.next += EIGHTH; music.step++;
-  }
+  if (track === "lament") scheduleLament(); else scheduleRun();
 }
 
 function bodyLand(power) {                                     // softer thump when the body meets the road

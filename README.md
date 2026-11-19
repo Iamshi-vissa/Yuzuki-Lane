@@ -30,12 +30,12 @@ The run speeds up as you go. The sky moves from dusk to a moonlit night and back
 
 ## MUSIC AND SOUND
 
-Two original pieces, both in the Japanese in-scale (D, E♭, G, A, B♭), crossfade with the game:
+Two original pieces written for the game crossfade as you play:
 
-- **While running:** koto arpeggios, a breathy bamboo-flute melody and a low drone, with taiko drums that join as the run speeds up.
-- **After a crash:** a slow lament with temple-bell strikes, a few deep koto notes and a long, low flute line. A new run fades back to the running theme.
+- **Lantern Run** (while running): a bright bamboo-flute hook in the Japanese yo scale over pads, bass and koto, with a festival drum groove, shamisen and taiko that build as the run speeds up.
+- **Ash and Moonlight** (after a crash): slow pads in the in-scale, temple-bell strikes, soft koto and a low flute. A new run fades back to Lantern Run.
 
-Jumps make a heavy breath, ducking makes a scraping slide on the stones (the body skids with the same sound after a crash), and each obstacle has its own crash sound. Everything is synthesised live with the Web Audio API, so there are no audio files and no third-party licences. Press M or the ♪ button to mute.
+Jumps make a heavy breath, ducking makes a scraping slide on the stones (the body skids with the same sound after a crash), and each obstacle has its own crash sound. Everything is synthesised live with the Web Audio API and mixed through a reverb, so there are no audio files and no third-party licences. Press M or the ♪ button to mute.
 
 ## DEPLOY
 
